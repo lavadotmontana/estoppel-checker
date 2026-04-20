@@ -18,65 +18,67 @@ def extract_file_number(text):
 def clean_address(text):
     text = text.strip()
 
-    # Remove junk words
+    # Remove unwanted words
     text = re.sub(r"\bproduct\b", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bestoppel letter\b", "", text, flags=re.IGNORECASE)
 
-    # Fix common OCR typo
+    # Fix OCR typo
     text = re.sub(r"\bflrida\b", "Florida", text, flags=re.IGNORECASE)
 
-    # Trim ZIP+4 → ZIP
+    # Trim ZIP+4
     text = re.sub(r"(\d{5})-\d{4}", r"\1", text)
 
-    # Clean spacing
+    # Normalize spacing
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
-# 🔍 Extract ONE address (like your original, but safer)
+# 🔍 STRICT address extraction
 def extract_address(text):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
 
-    for i in range(len(lines)):
-        line = lines[i]
+    for i in range(len(lines) - 1):
+        street = lines[i]
+        city = lines[i + 1]
 
-        # must have number + letters (avoids phone/order #)
-        if re.search(r"\d+", line) and re.search(r"[A-Za-z]", line):
+        # ✅ STREET must:
+        # start with number + contain street word
+        if not re.match(r"^\d+\s+.*", street):
+            continue
 
-            # ignore obvious junk lines
-            if "status" in line.lower():
-                continue
+        if not re.search(r"(Street|St|Road|Rd|Place|Pl|Ave|Lane|Ln|Drive|Dr|Blvd|Circle|Cir)", street, re.IGNORECASE):
+            continue
 
-            street = line
+        # ❌ filter junk
+        if any(x in street.lower() for x in ["saveorder", "status", "assigned"]):
+            continue
 
-            # try combine with next line if it has ZIP
-            if i + 1 < len(lines):
-                next_line = lines[i + 1]
+        # ✅ CITY must:
+        # look like "Pensacola, FL 32506"
+        if not re.search(r"[A-Za-z]+,\s*[A-Za-z]{2,}\s*\d{5}", city):
+            continue
 
-                if re.search(r"\d{5}", next_line):
-                    return clean_address(f"{street} {next_line}")
+        if any(x in city.lower() for x in ["saveorder", "status", "assigned"]):
+            continue
 
-            return clean_address(street)
+        return clean_address(f"{street} {city}")
 
     return None
 
 
-# 🧠 To-Do logic (clean + minimal)
+# 🧠 To-Do logic
 def generate_todo(text):
     todos = set()
 
-    # Abbreviations
     if re.search(r"\bpl\b", text, re.IGNORECASE):
         todos.add("Spell out Place")
 
-    # State
     if re.search(r"\bfl\b", text, re.IGNORECASE):
         todos.add("Spell out Florida")
 
-    # Casing (real words only)
     words = re.findall(r"\b[A-Z]{4,}\b", text)
-    words = [w for w in words if w not in ["FL"]]
+    words = [w for w in words if w != "FL"]
 
     if words:
         todos.add("Fix casing (use Title Case)")

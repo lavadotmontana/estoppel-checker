@@ -18,7 +18,7 @@ def extract_file_number(text):
 def clean_address(text):
     text = text.strip()
 
-    # Remove "Estoppel Letter" only when between street and city
+    # Remove "Estoppel Letter" between street and city
     text = re.sub(
         r",\s*Estoppel Letter\s+([A-Z]+,)",
         r", \1",
@@ -44,7 +44,7 @@ def clean_address(text):
     return text.strip()
 
 
-# 🔍 Extract address (single-line pattern)
+# 🔍 Extract address (single-line)
 def extract_address(text):
     text = text.replace("\n", " ")
 
@@ -64,24 +64,54 @@ def extract_address(text):
 def generate_todo(text):
     todos = set()
 
-    # Abbreviation
     if re.search(r"\bPL\b", text):
         todos.add("Spell out Place")
 
-    # State
     if re.search(r"\bFL\b", text, re.IGNORECASE):
         todos.add("Spell out Florida")
 
-    # Casing detection (specific words)
     words = re.findall(r"\b[A-Z]{4,}\b", text)
-
-    ignore = {"FL"}
-    words = [w for w in words if w not in ignore]
+    words = [w for w in words if w not in ["FL"]]
 
     if words:
         todos.add(f"Fix casing: {', '.join(words)}")
 
     return list(todos)
+
+
+# 🔍 Check missing fields
+def check_missing_fields(text):
+    missing = []
+
+    def field_missing(label):
+        pattern = rf"{label}\s*(.*)"
+        match = re.search(pattern, text, re.IGNORECASE)
+
+        if not match:
+            return True
+
+        value = match.group(1).strip()
+
+        # Stop at next line
+        value = value.split("\n")[0].strip()
+
+        return value == ""
+
+    fields = {
+        "Owner Name": "Owner Name",
+        "County": "County",
+        "Municipality": "Municipality",
+        "Property Id": "Property Id",
+        "Buyer Name": "Buyer Name",
+        "Need By Date": "Need By Date",
+        "Closing Date": "Closing Date"
+    }
+
+    for key, label in fields.items():
+        if field_missing(key):
+            missing.append(f"Missing {label}")
+
+    return missing
 
 
 # 🚀 MAIN
@@ -93,22 +123,29 @@ if uploaded_file:
 
     file_number = extract_file_number(text)
     address = extract_address(text)
+    todos = generate_todo(address) if address else []
+    missing_fields = check_missing_fields(text)
 
-    st.subheader("To-Do List")
+    st.subheader("Results")
 
+    # Address + To-Do
     if address:
-        todos = generate_todo(address)
-
         st.markdown(f"### 📁 {file_number}")
         st.markdown(f"**📍 {address}**")
 
         if todos:
+            st.subheader("To-Do List")
             for todo in todos:
                 key = f"{file_number}-{todo}"
                 if st.checkbox(todo, key=key):
                     st.markdown(f"~~{todo}~~")
         else:
-            st.success("No issues found ✅")
-
+            st.success("No address issues found ✅")
     else:
         st.error("Address not detected")
+
+    # Missing fields
+    if missing_fields:
+        st.subheader("⚠️ Missing Required Fields")
+        for item in missing_fields:
+            st.warning(item)

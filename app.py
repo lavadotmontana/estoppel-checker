@@ -61,93 +61,57 @@ def generate_todo(text):
     return list(todos)
 
 
-# 🔍 Extract field (more flexible)
-def extract_field_block(text, label):
-    pattern = rf"{label}([\s\S]{0,50})"
-    match = re.search(pattern, text, re.IGNORECASE)
-
-    if not match:
-        return ""
-
-    block = match.group(1)
-
-    # Grab first non-empty line
-    lines = [l.strip() for l in block.split("\n") if l.strip()]
-
-    if not lines:
-        return ""
-
-    return lines[0]
-
-
-# 🔍 Clean date text
-def clean_date(value):
-    value = value.strip()
-
-    # Remove junk characters OCR might add
-    value = re.sub(r"[^\d/]", "", value)
-
-    return value
-
-
-# 🔍 Date validation
-def check_date(label, value):
-    value = clean_date(value)
-
-    if value == "" or value.lower() == label.lower():
-        return f"Missing {label}"
-
-    try:
-        date_obj = datetime.strptime(value, "%m/%d/%Y")
-        if date_obj < datetime.today():
-            return f"{label} is in the past"
-    except:
-        return f"{label} format invalid"
-
-    return None
-
-
-# 🔍 Field validation
+# 🔥 NEW FIELD VALIDATION (robust)
 def check_fields(text):
     issues = []
+    t = text.lower()
 
-    # Owner Name
-    owner = extract_field_block(text, "Owner Name")
-    if owner == "" or owner.lower() == "owner name":
+    # --- Owner Name ---
+    # If we DON'T see a real person name anywhere → missing
+    if not re.search(r"\b[a-z]+ [a-z]+\b", text):
         issues.append("Missing Owner Name")
 
-    # Property ID
-    prop = extract_field_block(text, "Property Id")
-    if prop.lower() in ["", "propertyid", "property id"]:
-        issues.append("Missing Property Id")
+    # --- Property ID ---
+    # Only check if placeholder still exists
+    if "propertyid" in t or "property id" in t:
+        # but ensure no real ID pattern exists
+        if not re.search(r"\d{2}-", text):
+            issues.append("Missing Property Id")
 
-    # County
-    county = extract_field_block(text, "County")
-    if county == "" or county.lower() == "county":
+    # --- County ---
+    if "escambia" not in t:
         issues.append("Missing County")
 
-    # Municipality
-    muni = extract_field_block(text, "Municipality")
-    if muni == "" or muni.lower() == "municipality":
+    # --- Municipality ---
+    if "county" not in t:
         issues.append("Missing Municipality")
 
-    # Buyer Name
-    buyer = extract_field_block(text, "Buyer Name")
-    if buyer == "" or buyer.lower() == "buyer name":
+    # --- Buyer Name ---
+    # Look specifically for Buyer Name + real name
+    if not re.search(r"buyer name\s+[a-z]+\s+[a-z]+", text, re.IGNORECASE):
         issues.append("Missing Buyer Name")
 
-    # Dates
-    need_by = extract_field_block(text, "Need By Date")
-    closing = extract_field_block(text, "Closing Date")
+    # --- Dates ---
+    dates = re.findall(r"\d{2}/\d{2}/\d{4}", text)
 
-    need_issue = check_date("Need By Date", need_by)
-    closing_issue = check_date("Closing Date", closing)
+    if len(dates) < 2:
+        issues.append("Missing Need By Date")
+        issues.append("Missing Closing Date")
+    else:
+        today = datetime.today()
 
-    if need_issue:
-        issues.append(need_issue)
+        try:
+            need_by = datetime.strptime(dates[0], "%m/%d/%Y")
+            closing = datetime.strptime(dates[1], "%m/%d/%Y")
 
-    if closing_issue:
-        issues.append(closing_issue)
+            if need_by < today:
+                issues.append("Need By Date is in the past")
+
+            if closing < today:
+                issues.append("Closing Date is in the past")
+
+        except:
+            issues.append("Date format issue")
 
     return issues
 

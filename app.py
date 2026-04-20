@@ -10,75 +10,47 @@ uploaded_file = st.file_uploader("Upload Screenshot", type=["png", "jpg", "jpeg"
 
 # 🔍 Extract file number
 def extract_file_number(text):
-    match = re.search(r"#\d{2}-\d+", text)
-    return match.group() if match else "Unknown File"
+    match = re.search(r"#\s*\d{2}-\d+", text)
+    return match.group().replace(" ", "") if match else "Unknown File"
 
 
-# 🧹 Clean address
-def clean_address(text):
-    text = text.strip()
-
-    # Remove unwanted words
-    text = re.sub(r"\bproduct\b", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\bestoppel letter\b", "", text, flags=re.IGNORECASE)
-
-    # Fix OCR typo
-    text = re.sub(r"\bflrida\b", "Florida", text, flags=re.IGNORECASE)
-
-    # Trim ZIP+4
-    text = re.sub(r"(\d{5})-\d{4}", r"\1", text)
-
-    # Normalize spacing
-    text = re.sub(r"\s+", " ", text)
-
-    return text.strip()
-
-
-# 🔍 STRICT address extraction
+# 🔍 Extract address (SINGLE LINE FORMAT)
 def extract_address(text):
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    text = text.replace("\n", " ")
 
-    for i in range(len(lines) - 1):
-        street = lines[i]
-        city = lines[i + 1]
+    # Match full address pattern
+    match = re.search(
+        r"(\d+\s+[A-Z\s]+,\s*[A-Z\s]+,\s*(Florida|FL)\s*\d{5}(-\d{4})?)",
+        text,
+        re.IGNORECASE
+    )
 
-        # ✅ STREET must:
-        # start with number + contain street word
-        if not re.match(r"^\d+\s+.*", street):
-            continue
+    if not match:
+        return None
 
-        if not re.search(r"(Street|St|Road|Rd|Place|Pl|Ave|Lane|Ln|Drive|Dr|Blvd|Circle|Cir)", street, re.IGNORECASE):
-            continue
+    address = match.group(1)
 
-        # ❌ filter junk
-        if any(x in street.lower() for x in ["saveorder", "status", "assigned"]):
-            continue
+    # --- Clean it ---
+    address = re.sub(r"(\d{5})-\d{4}", r"\1", address)  # trim ZIP+4
+    address = re.sub(r"\bFL\b", "Florida", address, flags=re.IGNORECASE)
+    address = re.sub(r"\s+", " ", address)
 
-        # ✅ CITY must:
-        # look like "Pensacola, FL 32506"
-        if not re.search(r"[A-Za-z]+,\s*[A-Za-z]{2,}\s*\d{5}", city):
-            continue
-
-        if any(x in city.lower() for x in ["saveorder", "status", "assigned"]):
-            continue
-
-        return clean_address(f"{street} {city}")
-
-    return None
+    return address.strip()
 
 
 # 🧠 To-Do logic
 def generate_todo(text):
     todos = set()
 
-    if re.search(r"\bpl\b", text, re.IGNORECASE):
+    if re.search(r"\bPL\b", text):
         todos.add("Spell out Place")
 
-    if re.search(r"\bfl\b", text, re.IGNORECASE):
+    if re.search(r"\bFL\b", text, re.IGNORECASE):
         todos.add("Spell out Florida")
 
+    # Detect ALL CAPS words (real issues only)
     words = re.findall(r"\b[A-Z]{4,}\b", text)
-    words = [w for w in words if w != "FL"]
+    words = [w for w in words if w not in ["FL"]]
 
     if words:
         todos.add("Fix casing (use Title Case)")

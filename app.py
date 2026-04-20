@@ -8,12 +8,21 @@ st.title("Estoppel Screenshot To-Do Checker")
 uploaded_file = st.file_uploader("Upload Screenshot", type=["png", "jpg", "jpeg"])
 
 
+# 🔍 Extract file number like #26-10908455
+def extract_file_number(text):
+    match = re.search(r"#\d{2}-\d+", text)
+    if match:
+        return match.group()
+    return "Unknown File"
+
+
+# 🧠 Generate To-Do list
 def generate_todo(text):
     todos = set()
 
     # 1. Casing
     if text.isupper():
-        todos.add("Convert address to Title Case")
+        todos.add("Convert to Title Case")
 
     # 2. Abbreviations
     replacements = {
@@ -30,49 +39,63 @@ def generate_todo(text):
 
     for pattern, full in replacements.items():
         if re.search(pattern, text, re.IGNORECASE):
-            todos.add(f"Spell out '{full}' (no abbreviations)")
+            todos.add(f"Spell out {full}")
 
     # 3. Directions
     if re.search(r"\b(nw|ne|sw|se|n|s|e|w)\b", text, re.IGNORECASE):
-        todos.add("Ensure directions (N, S, E, W, NW, etc.) are uppercase")
+        todos.add("Ensure directions (N, S, E, W, etc.) are uppercase")
 
-    # 4. State formatting (Florida only for now)
+    # 4. State
     if re.search(r"\bFL\b", text):
-        todos.add("Spell out state (Florida)")
+        todos.add("Spell out Florida")
 
-    # 5. Formatting cleanup
+    # 5. Cleanup
     if "  " in text:
         todos.add("Remove extra spaces")
 
     if ",," in text:
-        todos.add("Fix extra commas")
-
-    # 6. Structure check
-    if not re.search(r".+,\s.+,\s.+\d{5}", text):
-        todos.add("Ensure format: City, State ZIP")
+        todos.add("Fix commas")
 
     return list(todos)
 
 
+# 🚀 Main app logic
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image)
 
     extracted_text = pytesseract.image_to_string(image)
 
+    # 📁 File number
+    file_number = extract_file_number(extracted_text)
+
     st.subheader("To-Do List")
 
     lines = extracted_text.split("\n")
 
     for line in lines:
-        if re.search(r"\d+.*,", line):  # detect address-like lines
+        if re.search(r"\d+.*,", line):  # detect address
 
             todos = generate_todo(line)
 
             if todos:
+                # 📁 File number
+                st.markdown(f"## 📁 {file_number}")
+
+                # 📍 Address
                 st.markdown(f"**📍 {line}**")
 
+                # ✅ Checklist
                 for todo in todos:
-                    st.checkbox(todo, key=f"{line}-{todo}")
+                    key = f"{file_number}-{line}-{todo}"
+                    checked = st.checkbox("", key=key)
+
+                    if checked:
+                        st.markdown(
+                            f"<span style='color:green'><s>{todo}</s></span>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.write(todo)
 
                 st.markdown("---")

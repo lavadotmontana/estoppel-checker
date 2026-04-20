@@ -66,39 +66,42 @@ def generate_todo(text):
     return list(todos)
 
 
-# 🔍 Check missing fields (FIXED)
+# 🔥 NEW: smarter field detection
 def check_missing_fields(text):
     missing = []
 
-    def field_missing(label):
-        pattern = rf"{label}\s*(.*)"
-        match = re.search(pattern, text, re.IGNORECASE)
+    # Normalize text
+    text_lower = text.lower()
 
-        if not match:
-            return True
+    # --- Owner Name ---
+    # Look for real human name (2+ words, not placeholder)
+    if not re.search(r"owner name\s+[A-Za-z]+\s+[A-Za-z]+", text, re.IGNORECASE):
+        missing.append("Missing Owner Name")
 
-        value = match.group(1).strip()
-        value = value.split("\n")[0].strip()
+    # --- Buyer Name ---
+    if not re.search(r"buyer name\s+[A-Za-z]+\s+[A-Za-z]+", text, re.IGNORECASE):
+        missing.append("Missing Buyer Name")
 
-        # 🔥 KEY FIX: treat placeholder text as empty
-        if value == "" or value.lower() == label.lower():
-            return True
+    # --- County ---
+    if not re.search(r"county\s+[A-Za-z]+", text, re.IGNORECASE):
+        missing.append("Missing County")
 
-        return False
+    # --- Municipality ---
+    if not re.search(r"municipality\s+[A-Za-z]+", text, re.IGNORECASE):
+        missing.append("Missing Municipality")
 
-    fields = {
-        "Owner Name": "Owner Name",
-        "County": "County",
-        "Municipality": "Municipality",
-        "Property Id": "Property Id",
-        "Buyer Name": "Buyer Name",
-        "Need By Date": "Need By Date",
-        "Closing Date": "Closing Date"
-    }
+    # --- Property ID ---
+    # Look for ID pattern like 12-2S-31-3000-000-034
+    if not re.search(r"\d{2}-\d+[A-Z]-\d{2}-\d{4}-\d{3}-\d{3}", text):
+        missing.append("Missing Property Id")
 
-    for key, label in fields.items():
-        if field_missing(key):
-            missing.append(f"Missing {label}")
+    # --- Need By Date ---
+    if not re.search(r"need by date\s+\d{2}/\d{2}/\d{4}", text, re.IGNORECASE):
+        missing.append("Missing Need By Date")
+
+    # --- Closing Date ---
+    if not re.search(r"closing date\s+\d{2}/\d{2}/\d{4}", text, re.IGNORECASE):
+        missing.append("Missing Closing Date")
 
     return missing
 

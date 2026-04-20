@@ -7,34 +7,91 @@ st.title("Estoppel Screenshot To-Do Checker")
 
 uploaded_file = st.file_uploader("Upload Screenshot", type=["png", "jpg", "jpeg"])
 
-def generate_todo(text):
+
+def fix_address(text):
+    original = text
     todos = []
 
+    # 1. Normalize casing (Title Case but keep directions uppercase)
+    def smart_title(s):
+        words = s.lower().split()
+        directions = {"nw", "ne", "sw", "se", "n", "s", "e", "w"}
+        result = []
+        for w in words:
+            if w in directions:
+                result.append(w.upper())
+            else:
+                result.append(w.capitalize())
+        return " ".join(result)
+
     if text.isupper():
+        text = smart_title(text)
         todos.append("Convert to Title Case")
 
-    if re.search(r"\bPL\b", text):
-        todos.append('Replace "PL" with "Place"')
+    # 2. Abbreviation replacements
+    replacements = {
+        r"\bCt\b": "Court",
+        r"\bPl\b": "Place",
+        r"\bRd\b": "Road",
+        r"\bSt\b": "Street",
+        r"\bDr\b": "Drive",
+        r"\bLn\b": "Lane",
+        r"\bBlvd\b": "Boulevard",
+        r"\bAve\b": "Avenue",
+        r"\bCir\b": "Circle"
+    }
 
-    if re.search(r"\bCt\b", text):
-        todos.append('Replace "Ct" with "Court"')
+    for pattern, full in replacements.items():
+        if re.search(pattern, text, re.IGNORECASE):
+            text = re.sub(pattern, full, text, flags=re.IGNORECASE)
+            todos.append(f"Replace with '{full}'")
 
-    return todos
+    # 3. State formatting (spell out)
+    state_map = {
+        "FL": "Florida",
+        "TX": "Texas"
+    }
+
+    for abbr, full in state_map.items():
+        if re.search(rf"\b{abbr}\b", text):
+            text = re.sub(rf"\b{abbr}\b", full, text)
+            todos.append(f"Spell out state '{full}'")
+
+    # 4. Clean spacing
+    if "  " in text:
+        text = re.sub(r"\s+", " ", text)
+        todos.append("Remove extra spaces")
+
+    # 5. Fix commas
+    if ",," in text:
+        text = text.replace(",,", ",")
+        todos.append("Fix commas")
+
+    return original, text, todos
+
 
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image)
 
-    text = pytesseract.image_to_string(image)
+    extracted_text = pytesseract.image_to_string(image)
 
-    st.subheader("To-Do List")
+    st.subheader("Results")
 
-    for line in text.split("\n"):
+    for line in extracted_text.split("\n"):
         if re.search(r"\d+.*,", line):
-            todos = generate_todo(line)
+
+            original, fixed, todos = fix_address(line)
 
             if todos:
-                st.markdown(f"**{line}**")
+                st.markdown(f"### 📍 Original")
+                st.write(original)
+
+                st.markdown(f"### ✅ Corrected")
+                st.code(fixed)
+
+                st.markdown("### 📝 To-Do")
                 for t in todos:
                     st.write(f"- [ ] {t}")
+
                 st.markdown("---")

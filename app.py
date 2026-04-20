@@ -8,18 +8,17 @@ st.title("Estoppel Screenshot To-Do Checker")
 uploaded_file = st.file_uploader("Upload Screenshot", type=["png", "jpg", "jpeg"])
 
 
-# 🔍 Extract file number
+# 🔍 Extract file number (more forgiving)
 def extract_file_number(text):
-    match = re.search(r"#\d{2}-\d+", text)
+    match = re.search(r"#?\d{2}-\d{5,}", text)
     return match.group() if match else "Unknown File"
 
 
-# 🧠 Core logic: smarter To-Do generator
+# 🧠 To-Do logic (clean + prioritized)
 def generate_todo(address):
     todos = []
-    address_clean = address.strip()
+    address = address.strip()
 
-    # --- Abbreviation rules (SPECIFIC - highest priority) ---
     abbreviations = {
         "CT": "Court",
         "PL": "Place",
@@ -32,84 +31,81 @@ def generate_todo(address):
         "CIR": "Circle"
     }
 
-    found_abbreviations = set()
+    found_abbr = set()
 
+    # ✅ Specific rules first
     for abbr, full in abbreviations.items():
-        if re.search(rf"\b{abbr}\b", address_clean, re.IGNORECASE):
+        if re.search(rf"\b{abbr}\b", address, re.IGNORECASE):
             todos.append(f"Spell out {full}")
-            found_abbreviations.add(abbr)
+            found_abbr.add(abbr)
 
-    # --- State rule (SPECIFIC) ---
-    if re.search(r"\bFL\b", address_clean):
+    # State
+    if re.search(r"\bFL\b", address):
         todos.append("Spell out Florida")
 
-    # --- Casing rule (GENERAL - but smarter) ---
-    words = re.findall(r"\b[A-Z]{3,}\b", address_clean)
-
-    # Remove abbreviations from casing check
-    words = [w for w in words if w not in found_abbreviations and w != "FL"]
+    # ✅ Smarter casing (ignore abbreviations)
+    words = re.findall(r"\b[A-Z]{4,}\b", address)
+    words = [w for w in words if w not in found_abbr and w != "FL"]
 
     if words:
         todos.append("Fix casing (use Title Case)")
 
-    # --- Direction rule ---
-    if re.search(r"\b(nw|ne|sw|se|n|s|e|w)\b", address_clean, re.IGNORECASE):
-        todos.append("Ensure directions (N, S, E, W) are uppercase")
-
-    # --- Cleanup rules ---
-    if "  " in address_clean:
+    # Cleanup
+    if "  " in address:
         todos.append("Remove extra spaces")
 
-    if ",," in address_clean:
+    if ",," in address:
         todos.append("Fix commas")
 
-    return list(set(todos))  # remove duplicates safely
+    return list(set(todos))
 
 
-# ⚡ Cache OCR to prevent timeouts
-@st.cache_data(show_spinner=True)
-def run_ocr(image):
-    return pytesseract.image_to_string(image)
+# 🔍 Find BEST address (not all lines)
+def extract_best_address(text):
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+    for i in range(len(lines)):
+        line = lines[i]
+
+        # Look for street number
+        if re.search(r"\d{3,}", line):
+
+            # Try to combine with next line if ZIP exists
+            if i + 1 < len(lines) and re.search(r"\d{5}", lines[i + 1]):
+                return f"{line} {lines[i + 1]}"
+
+            return line
+
+    return None
 
 
 # 🚀 Main app
 if uploaded_file:
     image = Image.open(uploaded_file)
-
-    # Optional: resize for faster OCR
-    image = image.resize((1200, 1200))
-
     st.image(image, caption="Uploaded Screenshot")
 
-    extracted_text = run_ocr(image)
+    extracted_text = pytesseract.image_to_string(image)
+
     file_number = extract_file_number(extracted_text)
+    address = extract_best_address(extracted_text)
 
     st.subheader("To-Do List")
 
-    lines = [line.strip() for line in extracted_text.split("\n") if line.strip()]
+    if address:
+        todos = generate_todo(address)
 
-    for i, line in enumerate(lines):
+        st.markdown(f"### 📁 {file_number}")
+        st.markdown(f"**📍 {address}**")
 
-        # Detect address-like line
-        if re.search(r"\d+", line):
+        if todos:
+            for todo in todos:
+                key = f"{file_number}-{todo}"
+                checked = st.checkbox(todo, key=key)
 
-            full_address = line
+                if checked:
+                    st.markdown(f"~~{todo}~~")
+        else:
+            st.success("No issues found ✅")
 
-            # Combine with next line if zip present
-            if i + 1 < len(lines) and re.search(r"\d{5}", lines[i + 1]):
-                full_address += f" {lines[i + 1]}"
-
-            todos = generate_todo(full_address)
-
-            if todos:
-                st.markdown(f"### 📁 {file_number}")
-                st.markdown(f"**📍 {full_address}**")
-
-                for todo in todos:
-                    key = f"{file_number}-{full_address}-{todo}"
-                    checked = st.checkbox(todo, key=key)
-
-                    if checked:
-                        st.markdown(f"~~{todo}~~")
-
-                st.divider()
+    else:
+        st.error("No address detected")

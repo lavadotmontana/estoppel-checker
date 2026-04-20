@@ -14,7 +14,7 @@ def extract_order_number(text):
     return match.group() if match else "Unknown Order"
 
 
-# 🧹 Clean address
+# 🧹 Clean address text
 def clean_address(text):
     text = text.strip()
 
@@ -22,35 +22,36 @@ def clean_address(text):
     text = re.sub(r"\bproduct\b", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bestoppel letter\b", "", text, flags=re.IGNORECASE)
 
-    # Fix ZIP (only first 5 digits)
+    # Keep only first 5 digits of ZIP
     text = re.sub(r"(\d{5})-\d{4}", r"\1", text)
 
-    # Normalize spaces
+    # Remove extra spaces
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
-# 🔍 Extract ONE address (street + city line)
+# 🔍 Extract ONE address (reliable for OCR)
 def extract_address(text):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
 
     for i in range(len(lines)):
         line = lines[i]
 
-        # Must start with number (real street)
-        if re.match(r"^\d+\s+", line):
+        # Must contain numbers AND letters (filters phone numbers & junk)
+        if re.search(r"\d+", line) and re.search(r"[A-Za-z]", line):
 
-            street = line
+            street_line = line
 
-            # Try to grab next line as city/state/zip
+            # Try to combine with city/state/zip line
             if i + 1 < len(lines):
                 next_line = lines[i + 1]
 
                 if re.search(r"\d{5}", next_line):
-                    return clean_address(f"{street} {next_line}")
+                    combined = f"{street_line} {next_line}"
+                    return clean_address(combined)
 
-            return clean_address(street)
+            return clean_address(street_line)
 
     return None
 
@@ -59,7 +60,7 @@ def extract_address(text):
 def generate_todo(address):
     todos = set()
 
-    # Abbreviations
+    # Abbreviation rules (priority)
     replacements = {
         "CT": "Court",
         "PL": "Place",
@@ -83,7 +84,7 @@ def generate_todo(address):
     if re.search(r"\bFL\b", address):
         todos.add("Spell out Florida")
 
-    # Casing (ONLY real words, not abbreviations)
+    # Casing (ignore abbreviations + FL)
     words = re.findall(r"\b[A-Z]{4,}\b", address)
     words = [w for w in words if w not in found_abbr and w != "FL"]
 
@@ -93,15 +94,15 @@ def generate_todo(address):
     return list(todos)
 
 
-# 🚀 MAIN
+# 🚀 MAIN APP
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image)
+    st.image(image, caption="Uploaded Screenshot")
 
-    text = pytesseract.image_to_string(image)
+    extracted_text = pytesseract.image_to_string(image)
 
-    order_number = extract_order_number(text)
-    address = extract_address(text)
+    order_number = extract_order_number(extracted_text)
+    address = extract_address(extracted_text)
 
     st.subheader("To-Do List")
 

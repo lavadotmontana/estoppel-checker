@@ -42,21 +42,26 @@ def extract_address(text):
 def generate_todo(text):
     todos = set()
 
+    # Abbreviation
     if re.search(r"\bPL\b", text):
         todos.add("Spell out Place")
 
+    # State
     if re.search(r"\bFL\b", text, re.IGNORECASE):
         todos.add("Spell out Florida")
 
-    # Detect ALL CAPS words (real issues only)
+    # --- NEW: precise casing detection ---
     words = re.findall(r"\b[A-Z]{4,}\b", text)
-    words = [w for w in words if w not in ["FL"]]
+
+    # Ignore things that shouldn't be flagged
+    ignore = {"FL"}
+    words = [w for w in words if w not in ignore]
 
     if words:
-        todos.add("Fix casing (use Title Case)")
+        word_list = ", ".join(words)
+        todos.add(f"Fix casing: {word_list}")
 
     return list(todos)
-
 
 # 🚀 MAIN
 if uploaded_file:

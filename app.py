@@ -2,6 +2,7 @@ import streamlit as st
 from PIL import Image
 import pytesseract
 import re
+from datetime import datetime
 
 st.title("Estoppel Screenshot To-Do Checker")
 
@@ -47,7 +48,7 @@ def extract_address(text):
     return clean_address(match.group(1)) if match else None
 
 
-# 🧠 Generate To-Do
+# 🧠 To-Do list
 def generate_todo(text):
     todos = set()
 
@@ -66,44 +67,74 @@ def generate_todo(text):
     return list(todos)
 
 
-# 🔥 NEW: smarter field detection
-def check_missing_fields(text):
-    missing = []
+# 🔍 Extract field value
+def extract_field(text, label):
+    match = re.search(rf"{label}\s*(.*)", text, re.IGNORECASE)
+    if not match:
+        return ""
 
-    # Normalize text
-    text_lower = text.lower()
+    value = match.group(1).split("\n")[0].strip()
+    return value
 
-    # --- Owner Name ---
-    # Look for real human name (2+ words, not placeholder)
-    if not re.search(r"owner name\s+[A-Za-z]+\s+[A-Za-z]+", text, re.IGNORECASE):
-        missing.append("Missing Owner Name")
 
-    # --- Buyer Name ---
-    if not re.search(r"buyer name\s+[A-Za-z]+\s+[A-Za-z]+", text, re.IGNORECASE):
-        missing.append("Missing Buyer Name")
+# 🔍 Date validation
+def check_date(label, value):
+    if value == "" or value.lower() == label.lower():
+        return f"Missing {label}"
 
-    # --- County ---
-    if not re.search(r"county\s+[A-Za-z]+", text, re.IGNORECASE):
-        missing.append("Missing County")
+    try:
+        date_obj = datetime.strptime(value, "%m/%d/%Y")
+        if date_obj < datetime.today():
+            return f"{label} is in the past"
+    except:
+        return f"{label} format invalid"
 
-    # --- Municipality ---
-    if not re.search(r"municipality\s+[A-Za-z]+", text, re.IGNORECASE):
-        missing.append("Missing Municipality")
+    return None
 
-    # --- Property ID ---
-    # Look for ID pattern like 12-2S-31-3000-000-034
-    if not re.search(r"\d{2}-\d+[A-Z]-\d{2}-\d{4}-\d{3}-\d{3}", text):
-        missing.append("Missing Property Id")
 
-    # --- Need By Date ---
-    if not re.search(r"need by date\s+\d{2}/\d{2}/\d{4}", text, re.IGNORECASE):
-        missing.append("Missing Need By Date")
+# 🔍 Field validation
+def check_fields(text):
+    issues = []
 
-    # --- Closing Date ---
-    if not re.search(r"closing date\s+\d{2}/\d{2}/\d{4}", text, re.IGNORECASE):
-        missing.append("Missing Closing Date")
+    # Owner Name
+    owner = extract_field(text, "Owner Name")
+    if owner == "" or owner.lower() == "owner name":
+        issues.append("Missing Owner Name")
 
-    return missing
+    # Property ID (SIMPLIFIED RULE)
+    prop = extract_field(text, "Property Id")
+    if prop.lower() in ["", "propertyid", "property id"]:
+        issues.append("Missing Property Id")
+
+    # County
+    county = extract_field(text, "County")
+    if county == "" or county.lower() == "county":
+        issues.append("Missing County")
+
+    # Municipality
+    muni = extract_field(text, "Municipality")
+    if muni == "" or muni.lower() == "municipality":
+        issues.append("Missing Municipality")
+
+    # Buyer Name
+    buyer = extract_field(text, "Buyer Name")
+    if buyer == "" or buyer.lower() == "buyer name":
+        issues.append("Missing Buyer Name")
+
+    # Dates
+    need_by = extract_field(text, "Need By Date")
+    closing = extract_field(text, "Closing Date")
+
+    need_issue = check_date("Need By Date", need_by)
+    closing_issue = check_date("Closing Date", closing)
+
+    if need_issue:
+        issues.append(need_issue)
+
+    if closing_issue:
+        issues.append(closing_issue)
+
+    return issues
 
 
 # 🚀 MAIN
@@ -116,7 +147,7 @@ if uploaded_file:
     file_number = extract_file_number(text)
     address = extract_address(text)
     todos = generate_todo(address) if address else []
-    missing_fields = check_missing_fields(text)
+    issues = check_fields(text)
 
     st.subheader("Results")
 
@@ -136,8 +167,8 @@ if uploaded_file:
     else:
         st.error("Address not detected")
 
-    # Missing fields
-    if missing_fields:
-        st.subheader("⚠️ Missing Required Fields")
-        for item in missing_fields:
+    # Field Issues
+    if issues:
+        st.subheader("⚠️ Field Issues")
+        for item in issues:
             st.warning(item)

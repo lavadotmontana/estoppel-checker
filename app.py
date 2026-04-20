@@ -59,43 +59,51 @@ def generate_todo(text):
     return list(todos)
 
 
-# 🚀 Main app logic
+# 🚀 Main app
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image)
 
     extracted_text = pytesseract.image_to_string(image)
 
-    # 📁 File number
     file_number = extract_file_number(extracted_text)
 
     st.subheader("To-Do List")
 
     lines = extracted_text.split("\n")
 
-    for line in lines:
-        if re.search(r"\d+.*,", line):  # detect address
+    for i in range(len(lines)):
+        line = lines[i]
 
-            todos = generate_todo(line)
+        # Detect street line
+        if re.search(r"\d+", line):
+
+            full_address = line.strip()
+
+            # Try to combine with next line (city/state/zip)
+            if i + 1 < len(lines):
+                next_line = lines[i + 1]
+                if re.search(r"\d{5}", next_line):
+                    full_address = f"{line.strip()} {next_line.strip()}"
+
+            todos = generate_todo(full_address)
 
             if todos:
-                # 📁 File number
-                st.markdown(f"## 📁 {file_number}")
+                # 📁 Smaller file number
+                st.markdown(f"<h4>📁 {file_number}</h4>", unsafe_allow_html=True)
 
-                # 📍 Address
-                st.markdown(f"**📍 {line}**")
+                # 📍 Full address
+                st.markdown(f"**📍 {full_address}**")
 
                 # ✅ Checklist
                 for todo in todos:
-                    key = f"{file_number}-{line}-{todo}"
-                    checked = st.checkbox("", key=key)
+                    key = f"{file_number}-{full_address}-{todo}"
+                    checked = st.checkbox(todo, key=key)
 
                     if checked:
                         st.markdown(
                             f"<span style='color:green'><s>{todo}</s></span>",
                             unsafe_allow_html=True
                         )
-                    else:
-                        st.write(todo)
 
                 st.markdown("---")

@@ -18,7 +18,6 @@ def extract_file_number(text):
 def clean_address(text):
     text = text.strip()
 
-    # Remove "Estoppel Letter" between street and city
     text = re.sub(
         r",\s*Estoppel Letter\s+([A-Z]+,)",
         r", \1",
@@ -26,25 +25,16 @@ def clean_address(text):
         flags=re.IGNORECASE
     )
 
-    # Backup removal
     text = re.sub(r"\bestoppel letter\b", "", text, flags=re.IGNORECASE)
-
-    # Fix OCR typo
     text = re.sub(r"\bflrida\b", "Florida", text, flags=re.IGNORECASE)
-
-    # Convert FL → Florida
     text = re.sub(r"\bFL\b", "Florida", text, flags=re.IGNORECASE)
-
-    # Trim ZIP+4 → ZIP
     text = re.sub(r"(\d{5})-\d{4}", r"\1", text)
-
-    # Normalize spacing
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
-# 🔍 Extract address (single-line)
+# 🔍 Extract address
 def extract_address(text):
     text = text.replace("\n", " ")
 
@@ -54,13 +44,10 @@ def extract_address(text):
         re.IGNORECASE
     )
 
-    if not match:
-        return None
-
-    return clean_address(match.group(1))
+    return clean_address(match.group(1)) if match else None
 
 
-# 🧠 Generate To-Do list
+# 🧠 Generate To-Do
 def generate_todo(text):
     todos = set()
 
@@ -71,7 +58,7 @@ def generate_todo(text):
         todos.add("Spell out Florida")
 
     words = re.findall(r"\b[A-Z]{4,}\b", text)
-    words = [w for w in words if w not in ["FL"]]
+    words = [w for w in words if w != "FL"]
 
     if words:
         todos.add(f"Fix casing: {', '.join(words)}")
@@ -79,7 +66,7 @@ def generate_todo(text):
     return list(todos)
 
 
-# 🔍 Check missing fields
+# 🔍 Check missing fields (FIXED)
 def check_missing_fields(text):
     missing = []
 
@@ -91,11 +78,13 @@ def check_missing_fields(text):
             return True
 
         value = match.group(1).strip()
-
-        # Stop at next line
         value = value.split("\n")[0].strip()
 
-        return value == ""
+        # 🔥 KEY FIX: treat placeholder text as empty
+        if value == "" or value.lower() == label.lower():
+            return True
+
+        return False
 
     fields = {
         "Owner Name": "Owner Name",
@@ -128,7 +117,7 @@ if uploaded_file:
 
     st.subheader("Results")
 
-    # Address + To-Do
+    # Address
     if address:
         st.markdown(f"### 📁 {file_number}")
         st.markdown(f"**📍 {address}**")

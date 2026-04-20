@@ -8,15 +8,13 @@ st.title("Estoppel Screenshot To-Do Checker")
 uploaded_file = st.file_uploader("Upload Screenshot", type=["png", "jpg", "jpeg"])
 
 
-# 🔍 Extract file number like #26-10908455
-def extract_file_number(text):
-    match = re.search(r"#\d{2}-\d+", text)
-    if match:
-        return match.group()
-    return "Unknown File"
+# 🔍 Extract order number
+def extract_order_number(text):
+    match = re.search(r"#\d{2}-\d{5,}", text)
+    return match.group() if match else "Unknown Order"
 
 
-# 🧹 Clean address text
+# 🧹 Clean address
 def clean_address(text):
     text = text.strip()
 
@@ -24,112 +22,104 @@ def clean_address(text):
     text = re.sub(r"\bproduct\b", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bestoppel letter\b", "", text, flags=re.IGNORECASE)
 
-    # Keep only first 5 digits of ZIP
+    # Fix ZIP (only first 5 digits)
     text = re.sub(r"(\d{5})-\d{4}", r"\1", text)
 
-    # Remove extra spaces
+    # Normalize spaces
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
-# 🧠 Generate To-Do list
-def generate_todo(text):
-    todos = set()
-
-    # --- Abbreviations FIRST ---
-    replacements = {
-        r"\bCt\b": "Court",
-        r"\bPl\b": "Place",
-        r"\bRd\b": "Road",
-        r"\bSt\b": "Street",
-        r"\bDr\b": "Drive",
-        r"\bLn\b": "Lane",
-        r"\bBlvd\b": "Boulevard",
-        r"\bAve\b": "Avenue",
-        r"\bCir\b": "Circle"
-    }
-
-    found_abbr = set()
-
-    for pattern, full in replacements.items():
-        if re.search(pattern, text, re.IGNORECASE):
-            todos.add(f"Spell out {full}")
-            found_abbr.add(full.upper())
-
-    # --- State ---
-    if re.search(r"\bFL\b", text):
-        todos.add("Spell out Florida")
-
-    # --- Smarter casing (ignore abbreviations) ---
-    words = re.findall(r"\b[A-Z]{4,}\b", text)
-
-    ignore = {"FL"} | found_abbr
-    words = [w for w in words if w not in ignore]
-
-    if words:
-        todos.add("Fix casing (use Title Case)")
-
-    # --- Directions ---
-    if re.search(r"\b(nw|ne|sw|se|n|s|e|w)\b", text, re.IGNORECASE):
-        todos.add("Ensure directions (N, S, E, W, etc.) are uppercase")
-
-    # --- Cleanup ---
-    if "  " in text:
-        todos.add("Remove extra spaces")
-
-    if ",," in text:
-        todos.add("Fix commas")
-
-    return list(todos)
-
-
-# 🚀 Main app
-if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image)
-
-    extracted_text = pytesseract.image_to_string(image)
-
-    file_number = extract_file_number(extracted_text)
-
-    st.subheader("To-Do List")
-
-    lines = extracted_text.split("\n")
+# 🔍 Extract ONE address (street + city line)
+def extract_address(text):
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
 
     for i in range(len(lines)):
         line = lines[i]
 
-        # Detect street line
-        if re.search(r"\d+", line):
+        # Must start with number (real street)
+        if re.match(r"^\d+\s+", line):
 
-            full_address = clean_address(line.strip())
+            street = line
 
-            # Combine with next line if it has ZIP
+            # Try to grab next line as city/state/zip
             if i + 1 < len(lines):
                 next_line = lines[i + 1]
+
                 if re.search(r"\d{5}", next_line):
-                    combined = f"{line.strip()} {next_line.strip()}"
-                    full_address = clean_address(combined)
+                    return clean_address(f"{street} {next_line}")
 
-            todos = generate_todo(full_address)
+            return clean_address(street)
 
-            if todos:
-                # 📁 File number
-                st.markdown(f"<h4>📁 {file_number}</h4>", unsafe_allow_html=True)
+    return None
 
-                # 📍 Address
-                st.markdown(f"**📍 {full_address}**")
 
-                # ✅ Checklist
-                for todo in todos:
-                    key = f"{file_number}-{full_address}-{todo}"
-                    checked = st.checkbox(todo, key=key)
+# 🧠 Generate To-Do list
+def generate_todo(address):
+    todos = set()
 
-                    if checked:
-                        st.markdown(
-                            f"<span style='color:green'><s>{todo}</s></span>",
-                            unsafe_allow_html=True
-                        )
+    # Abbreviations
+    replacements = {
+        "CT": "Court",
+        "PL": "Place",
+        "RD": "Road",
+        "ST": "Street",
+        "DR": "Drive",
+        "LN": "Lane",
+        "BLVD": "Boulevard",
+        "AVE": "Avenue",
+        "CIR": "Circle"
+    }
 
-                st.markdown("---")
+    found_abbr = set()
+
+    for abbr, full in replacements.items():
+        if re.search(rf"\b{abbr}\b", address, re.IGNORECASE):
+            todos.add(f"Spell out {full}")
+            found_abbr.add(abbr)
+
+    # State
+    if re.search(r"\bFL\b", address):
+        todos.add("Spell out Florida")
+
+    # Casing (ONLY real words, not abbreviations)
+    words = re.findall(r"\b[A-Z]{4,}\b", address)
+    words = [w for w in words if w not in found_abbr and w != "FL"]
+
+    if words:
+        todos.add("Fix casing (use Title Case)")
+
+    return list(todos)
+
+
+# 🚀 MAIN
+if uploaded_file:
+    image = Image.open(uploaded_file)
+    st.image(image)
+
+    text = pytesseract.image_to_string(image)
+
+    order_number = extract_order_number(text)
+    address = extract_address(text)
+
+    st.subheader("To-Do List")
+
+    if address:
+        todos = generate_todo(address)
+
+        st.markdown(f"### 📁 {order_number}")
+        st.markdown(f"**📍 {address}**")
+
+        if todos:
+            for todo in todos:
+                key = f"{order_number}-{todo}"
+                checked = st.checkbox(todo, key=key)
+
+                if checked:
+                    st.markdown(f"~~{todo}~~")
+        else:
+            st.success("No issues found ✅")
+
+    else:
+        st.error("Address not detected")

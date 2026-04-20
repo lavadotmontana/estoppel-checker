@@ -14,11 +14,40 @@ def extract_file_number(text):
     return match.group().replace(" ", "") if match else "Unknown File"
 
 
-# 🔍 Extract address (SINGLE LINE FORMAT)
+# 🧹 Clean address
+def clean_address(text):
+    text = text.strip()
+
+    # Remove "Estoppel Letter" only when between street and city
+    text = re.sub(
+        r",\s*Estoppel Letter\s+([A-Z]+,)",
+        r", \1",
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # Backup removal
+    text = re.sub(r"\bestoppel letter\b", "", text, flags=re.IGNORECASE)
+
+    # Fix OCR typo
+    text = re.sub(r"\bflrida\b", "Florida", text, flags=re.IGNORECASE)
+
+    # Convert FL → Florida
+    text = re.sub(r"\bFL\b", "Florida", text, flags=re.IGNORECASE)
+
+    # Trim ZIP+4 → ZIP
+    text = re.sub(r"(\d{5})-\d{4}", r"\1", text)
+
+    # Normalize spacing
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+
+# 🔍 Extract address (single-line pattern)
 def extract_address(text):
     text = text.replace("\n", " ")
 
-    # Match full address pattern
     match = re.search(
         r"(\d+\s+[A-Z\s]+,\s*[A-Z\s]+,\s*(Florida|FL)\s*\d{5}(-\d{4})?)",
         text,
@@ -28,17 +57,10 @@ def extract_address(text):
     if not match:
         return None
 
-    address = match.group(1)
-
-    # --- Clean it ---
-    address = re.sub(r"(\d{5})-\d{4}", r"\1", address)  # trim ZIP+4
-    address = re.sub(r"\bFL\b", "Florida", address, flags=re.IGNORECASE)
-    address = re.sub(r"\s+", " ", address)
-
-    return address.strip()
+    return clean_address(match.group(1))
 
 
-# 🧠 To-Do logic
+# 🧠 Generate To-Do list
 def generate_todo(text):
     todos = set()
 
@@ -50,18 +72,17 @@ def generate_todo(text):
     if re.search(r"\bFL\b", text, re.IGNORECASE):
         todos.add("Spell out Florida")
 
-    # --- NEW: precise casing detection ---
+    # Casing detection (specific words)
     words = re.findall(r"\b[A-Z]{4,}\b", text)
 
-    # Ignore things that shouldn't be flagged
     ignore = {"FL"}
     words = [w for w in words if w not in ignore]
 
     if words:
-        word_list = ", ".join(words)
-        todos.add(f"Fix casing: {word_list}")
+        todos.add(f"Fix casing: {', '.join(words)}")
 
     return list(todos)
+
 
 # 🚀 MAIN
 if uploaded_file:

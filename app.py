@@ -58,13 +58,13 @@ def generate_todo(text):
     return list(todos)
 
 
-# 🔍 Extract block after label (handles next-line values)
+# 🔍 Extract block after label
 def extract_block(text, label):
-    pattern = rf"{label}([\s\S]{0,50})"
+    pattern = rf"{label}([\s\S]{0,80})"
     match = re.search(pattern, text, re.IGNORECASE)
 
     if not match:
-        return ""
+        return []
 
     block = match.group(1)
     lines = [l.strip() for l in block.split("\n") if l.strip()]
@@ -72,19 +72,23 @@ def extract_block(text, label):
     return lines
 
 
-# 🔍 Field validation (NO DATES)
+# 🔍 Field validation
 def check_fields(text):
     issues = []
 
     # --- Owner Name ---
     owner_lines = extract_block(text, "Owner Name")
-    owner_text = " ".join(owner_lines)
+    owner_text = ""
 
-    if (
-        owner_text == "" or
-        owner_text.lower() == "owner name" or
-        len(re.findall(r"[A-Za-z]+", owner_text)) < 2
-    ):
+    for line in owner_lines:
+        if line.lower() == "owner name":
+            continue
+
+        if len(re.findall(r"[A-Za-z]+", line)) >= 2:
+            owner_text = line
+            break
+
+    if owner_text == "":
         issues.append("Missing Owner Name")
 
     # --- Property ID ---
@@ -98,15 +102,19 @@ def check_fields(text):
     ):
         issues.append("Missing Property Id")
 
-    # --- Buyer Name ---
+    # --- Buyer Name (FIXED)
     buyer_lines = extract_block(text, "Buyer Name")
-    buyer_text = " ".join(buyer_lines)
+    buyer_text = ""
 
-    if (
-        buyer_text == "" or
-        buyer_text.lower() == "buyer name" or
-        len(re.findall(r"[A-Za-z]+", buyer_text)) < 2
-    ):
+    for line in buyer_lines:
+        if line.lower() == "buyer name":
+            continue
+
+        if len(re.findall(r"[A-Za-z]+", line)) >= 2:
+            buyer_text = line
+            break
+
+    if buyer_text == "":
         issues.append("Missing Buyer Name")
 
     return issues

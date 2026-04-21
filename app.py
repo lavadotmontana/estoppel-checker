@@ -59,68 +59,85 @@ def generate_todo(text):
     return list(todos)
 
 
-# 🔥 FIELD VALIDATION (FINAL)
+# 🔍 Extract block after label (handles next-line values)
+def extract_block(text, label):
+    pattern = rf"{label}([\s\S]{0,50})"
+    match = re.search(pattern, text, re.IGNORECASE)
+
+    if not match:
+        return ""
+
+    block = match.group(1)
+    lines = [l.strip() for l in block.split("\n") if l.strip()]
+
+    return lines
+
+
+# 🔍 Validate date
+def validate_date(label, text):
+    lines = extract_block(text, label)
+
+    value = ""
+
+    for line in lines:
+        cleaned = re.sub(r"[^\d/]", "", line)
+        if re.match(r"\d{2}/\d{2}/\d{4}", cleaned):
+            value = cleaned
+            break
+
+    if value == "":
+        return f"Missing {label}"
+
+    try:
+        date_obj = datetime.strptime(value, "%m/%d/%Y")
+        if date_obj < datetime.today():
+            return f"{label} is in the past"
+    except:
+        return f"{label} format invalid"
+
+    return None
+
+
+# 🔍 Field validation
 def check_fields(text):
     issues = []
 
     # --- Owner Name ---
-    owner_match = re.search(r"Owner Name\s*(.*)", text, re.IGNORECASE)
-    owner = owner_match.group(1).strip() if owner_match else ""
+    owner_lines = extract_block(text, "Owner Name")
+    owner_text = " ".join(owner_lines)
 
     if (
-        owner == "" or
-        owner.lower() == "owner name" or
-        len(re.findall(r"[A-Za-z]+", owner)) < 2
+        owner_text == "" or
+        owner_text.lower() == "owner name" or
+        len(re.findall(r"[A-Za-z]+", owner_text)) < 2
     ):
         issues.append("Missing Owner Name")
 
     # --- Property ID ---
-    prop_match = re.search(r"Property Id\s*(.*)", text, re.IGNORECASE)
-    prop = prop_match.group(1).strip() if prop_match else ""
+    prop_lines = extract_block(text, "Property Id")
+    prop_text = " ".join(prop_lines).lower()
 
     if (
-        prop == "" or
-        prop.lower() in ["propertyid", "property id"] or
-        not re.search(r"\d", prop)
+        prop_text == "" or
+        prop_text in ["propertyid", "property id"] or
+        not re.search(r"\d", prop_text)
     ):
         issues.append("Missing Property Id")
 
     # --- Buyer Name ---
-    buyer_match = re.search(r"Buyer Name\s*(.*)", text, re.IGNORECASE)
-    buyer = buyer_match.group(1).strip() if buyer_match else ""
+    buyer_lines = extract_block(text, "Buyer Name")
+    buyer_text = " ".join(buyer_lines)
 
     if (
-        buyer == "" or
-        buyer.lower() == "buyer name" or
-        len(re.findall(r"[A-Za-z]+", buyer)) < 2
+        buyer_text == "" or
+        buyer_text.lower() == "buyer name" or
+        len(re.findall(r"[A-Za-z]+", buyer_text)) < 2
     ):
         issues.append("Missing Buyer Name")
 
     # --- Dates ---
-    def validate_date(label):
-        match = re.search(rf"{label}\s*(.*)", text, re.IGNORECASE)
-        value = match.group(1).strip() if match else ""
-
-        # Clean OCR junk
-        value = re.sub(r"[^\d/]", "", value)
-
-        if value == "" or value.lower() == label.lower():
-            return f"Missing {label}"
-
-        if not re.match(r"\d{2}/\d{2}/\d{4}", value):
-            return f"{label} format invalid"
-
-        try:
-            date_obj = datetime.strptime(value, "%m/%d/%Y")
-            if date_obj < datetime.today():
-                return f"{label} is in the past"
-        except:
-            return f"{label} format invalid"
-
-        return None
-
-    need_issue = validate_date("Need By Date")
-    closing_issue = validate_date("Closing Date")
+    need_issue = validate_date("Need By Date", text)
+    closing_issue = validate_date("Closing Date", text)
 
     if need_issue:
         issues.append(need_issue)

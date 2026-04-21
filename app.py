@@ -18,14 +18,12 @@ def extract_file_number(text):
 # 🧹 Clean address
 def clean_address(text):
     text = text.strip()
-
     text = re.sub(r",\s*Estoppel Letter\s+([A-Z]+,)", r", \1", text, flags=re.IGNORECASE)
     text = re.sub(r"\bestoppel letter\b", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bflrida\b", "Florida", text, flags=re.IGNORECASE)
     text = re.sub(r"\bFL\b", "Florida", text, flags=re.IGNORECASE)
     text = re.sub(r"(\d{5})-\d{4}", r"\1", text)
     text = re.sub(r"\s+", " ", text)
-
     return text.strip()
 
 
@@ -61,57 +59,74 @@ def generate_todo(text):
     return list(todos)
 
 
-# 🔥 NEW FIELD VALIDATION (robust)
+# 🔥 FIELD VALIDATION (FINAL)
 def check_fields(text):
     issues = []
-    t = text.lower()
 
     # --- Owner Name ---
-    # If we DON'T see a real person name anywhere → missing
-    if not re.search(r"\b[a-z]+ [a-z]+\b", text):
+    owner_match = re.search(r"Owner Name\s*(.*)", text, re.IGNORECASE)
+    owner = owner_match.group(1).strip() if owner_match else ""
+
+    if (
+        owner == "" or
+        owner.lower() == "owner name" or
+        len(re.findall(r"[A-Za-z]+", owner)) < 2
+    ):
         issues.append("Missing Owner Name")
 
     # --- Property ID ---
-    # Only check if placeholder still exists
-    if "propertyid" in t or "property id" in t:
-        # but ensure no real ID pattern exists
-        if not re.search(r"\d{2}-", text):
-            issues.append("Missing Property Id")
+    prop_match = re.search(r"Property Id\s*(.*)", text, re.IGNORECASE)
+    prop = prop_match.group(1).strip() if prop_match else ""
 
-    # --- County ---
-    if "escambia" not in t:
-        issues.append("Missing County")
-
-    # --- Municipality ---
-    if "county" not in t:
-        issues.append("Missing Municipality")
+    if (
+        prop == "" or
+        prop.lower() in ["propertyid", "property id"] or
+        not re.search(r"\d", prop)
+    ):
+        issues.append("Missing Property Id")
 
     # --- Buyer Name ---
-    # Look specifically for Buyer Name + real name
-    if not re.search(r"buyer name\s+[a-z]+\s+[a-z]+", text, re.IGNORECASE):
+    buyer_match = re.search(r"Buyer Name\s*(.*)", text, re.IGNORECASE)
+    buyer = buyer_match.group(1).strip() if buyer_match else ""
+
+    if (
+        buyer == "" or
+        buyer.lower() == "buyer name" or
+        len(re.findall(r"[A-Za-z]+", buyer)) < 2
+    ):
         issues.append("Missing Buyer Name")
 
     # --- Dates ---
-    dates = re.findall(r"\d{2}/\d{2}/\d{4}", text)
+    def validate_date(label):
+        match = re.search(rf"{label}\s*(.*)", text, re.IGNORECASE)
+        value = match.group(1).strip() if match else ""
 
-    if len(dates) < 2:
-        issues.append("Missing Need By Date")
-        issues.append("Missing Closing Date")
-    else:
-        today = datetime.today()
+        # Clean OCR junk
+        value = re.sub(r"[^\d/]", "", value)
+
+        if value == "" or value.lower() == label.lower():
+            return f"Missing {label}"
+
+        if not re.match(r"\d{2}/\d{2}/\d{4}", value):
+            return f"{label} format invalid"
 
         try:
-            need_by = datetime.strptime(dates[0], "%m/%d/%Y")
-            closing = datetime.strptime(dates[1], "%m/%d/%Y")
-
-            if need_by < today:
-                issues.append("Need By Date is in the past")
-
-            if closing < today:
-                issues.append("Closing Date is in the past")
-
+            date_obj = datetime.strptime(value, "%m/%d/%Y")
+            if date_obj < datetime.today():
+                return f"{label} is in the past"
         except:
-            issues.append("Date format issue")
+            return f"{label} format invalid"
+
+        return None
+
+    need_issue = validate_date("Need By Date")
+    closing_issue = validate_date("Closing Date")
+
+    if need_issue:
+        issues.append(need_issue)
+
+    if closing_issue:
+        issues.append(closing_issue)
 
     return issues
 

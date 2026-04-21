@@ -2,7 +2,6 @@ import streamlit as st
 from PIL import Image
 import pytesseract
 import re
-from datetime import datetime
 
 st.title("Estoppel Screenshot To-Do Checker")
 
@@ -73,32 +72,7 @@ def extract_block(text, label):
     return lines
 
 
-# 🔍 Validate date
-def validate_date(label, text):
-    lines = extract_block(text, label)
-
-    value = ""
-
-    for line in lines:
-        cleaned = re.sub(r"[^\d/]", "", line)
-        if re.match(r"\d{2}/\d{2}/\d{4}", cleaned):
-            value = cleaned
-            break
-
-    if value == "":
-        return f"Missing {label}"
-
-    try:
-        date_obj = datetime.strptime(value, "%m/%d/%Y")
-        if date_obj < datetime.today():
-            return f"{label} is in the past"
-    except:
-        return f"{label} format invalid"
-
-    return None
-
-
-# 🔍 Field validation
+# 🔍 Field validation (NO DATES)
 def check_fields(text):
     issues = []
 
@@ -134,16 +108,6 @@ def check_fields(text):
         len(re.findall(r"[A-Za-z]+", buyer_text)) < 2
     ):
         issues.append("Missing Buyer Name")
-
-    # --- Dates ---
-    need_issue = validate_date("Need By Date", text)
-    closing_issue = validate_date("Closing Date", text)
-
-    if need_issue:
-        issues.append(need_issue)
-
-    if closing_issue:
-        issues.append(closing_issue)
 
     return issues
 
